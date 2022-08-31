@@ -1,31 +1,17 @@
 #include <iostream>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include "shader.h"
 
-// very simple vertexShader
-const char* vertexShaderSource = "#version 330 core\n"
-"layout (location = 0) in vec3 aPos;\n"
-"layout (location = 1) in vec3 aColor; // the color variable has attribute position 1\n"
-"out vec3 vertexColor; // specify a color output to the fragment shader\n"
-"void main()\n"
-"{\n"
-"   gl_Position = vec4(aPos, 1.0);\n"
-"   vertexColor = aColor; // set ourColor to the input color we got from the vertex data\n"
-"}\0";
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
-const char* fragmentShaderSource = "#version 330 core\n"
-"in vec3 vertexColor; // the input variable from the vertex shader (same name and same type)\n"
-"out vec4 FragColor;\n"
-"void main()\n"
-"{\n"
-"    FragColor = vec4(vertexColor, 1.0);\n"
-"}\0";
 
 float vertices[] = {
-     0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 0.0f,  // top right
-     0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f,  // bottom right
-    -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f,  // bottom left
-    -0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 0.0f   // top left 
+     0.5f,  0.5f, 0.0f,     1.0f, 0.0f, 0.0f,   1.0f, 1.0f,     // top right
+     0.5f, -0.5f, 0.0f,     0.0f, 1.0f, 0.0f,   1.0f, 0.0f,     // bottom right
+    -0.5f, -0.5f, 0.0f,     0.0f, 0.0f, 1.0f,   0.0f, 0.0f,     // bottom left
+    -0.5f,  0.5f, 0.0f,     1.0f, 1.0f, 0.0f,   0.0f, 1.0f      // top left 
 };
 unsigned int indices[] = {  // note that we start from 0!
     0, 1, 3,   // first triangle
@@ -85,61 +71,15 @@ void setUpTheTriangleVAO(unsigned int& VBO, unsigned int& VAO, unsigned int& EBO
     // 4. weather the data should be normalized, in our case - no
     // 5. determines the stride (how many steps we need to take to get to the same value in the list), could be 0 to make OpenGL determine how long the stride is only when the values are tightly packed together
     // 6. this is just an offset with a weird cast
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
     // the 3 * sizeof(float) is just an offset of 3 values after the start of the stride
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-}
-unsigned int compileBoringShaders()
-{
-    unsigned int vertexShader;
-    vertexShader = glCreateShader(GL_VERTEX_SHADER); // creating the vertex shader
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL); // pass the shader source
-    glCompileShader(vertexShader); // and compile the shader
 
-    unsigned int fragmentShader;
-    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-
-    // the next few lines will check weather the shader compiled successfully with no errors
-    int  success;
-    char infoLog[512];
-
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-
-    unsigned int shaderProgram;
-    shaderProgram = glCreateProgram(); // this will create a shader program
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success)
-    {
-        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-
-    // we delete the shaders because they are already stored in the shaderProgram but also we do not need them in the future
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-
-    return shaderProgram;
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
 }
 int main()
 {
@@ -152,11 +92,36 @@ int main()
     unsigned int VAO;
     setUpTheTriangleVAO(VBO, VAO, EBO);
 
-    unsigned int shaderProgram = compileBoringShaders();
+    Shader ourShader("shaders/simple.vs", "shaders/simple.fs");
+
+    stbi_set_flip_vertically_on_load(true);
+    unsigned int texture;
+    glGenTextures(1, &texture);
+    glActiveTexture(GL_TEXTURE0); // activate the texture unit first before binding texture
+    glBindTexture(GL_TEXTURE_2D, texture);
+    // set the texture wrapping/filtering options (on the currently bound texture object)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // load and generate the texture
+    int width, height, nrChannels;
+    unsigned char* data = stbi_load("dog.jpg", &width, &height, &nrChannels, 0);
+    if (data)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    else
+    {
+        std::cout << "Failed to load texture" << std::endl;
+    }
+    stbi_image_free(data);
 
     while (!glfwWindowShouldClose(window)) // this is a very simple draw loop
     {
-        glUseProgram(shaderProgram);
+        ourShader.use();
+        glBindTexture(GL_TEXTURE_2D, texture);
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
@@ -167,7 +132,6 @@ int main()
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
     glDeleteVertexArrays(1, &VAO);
-    glDeleteProgram(shaderProgram);
 
     glfwTerminate(); // terminated the glfw and cleans it
     return 0;
